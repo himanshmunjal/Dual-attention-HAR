@@ -12,7 +12,7 @@
 # Logs: results/logs/<step>.log; training: results/logs/train.log (progress)
 # and results/logs/train/<dataset>/<job>.log (one per job).
 #
-# Training (src/run_parallel.py) splits the grid into 161 jobs (dataset x model
+# Training (src/run_parallel.py) splits the grid into 264 jobs (dataset x model
 # x variant x split x fold, all seeds). Each job writes its own
 # results/tables/parts/<dataset>/<job>.csv; at the end they are merged into
 # results/tables/raw_results.csv in a fixed order. JOBS=auto picks the number
@@ -41,7 +41,7 @@ JOBS=${JOBS:-auto}
 DEVICE=${DEVICE:-auto}
 VENV=${VENV:-.venv}
 TORCH_CUDA=${TORCH_CUDA:-cu128}
-MODELS="bigru_baseline bilstm_attention_baseline cnn_bigru_reference dual_attention_bigru"
+MODELS="bigru_baseline bilstm_attention_baseline cnn_bigru_reference deepconvlstm dual_attention_bigru"
 mkdir -p results/logs
 
 # UTF-8 file/console I/O on Windows (default there is cp1252); unbuffered so

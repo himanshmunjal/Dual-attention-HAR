@@ -5,8 +5,8 @@ Runs the whole training grid as many small, independent jobs, N at a time,
 then merges their results into results/tables/raw_results.csv.
 
 One job = one dataset x model x ablation variant x split x LOSO fold (all seeds),
-i.e. one `python -m src.train ... --folds K` process. That's 161 jobs for the
-full grid (483 runs), which keeps N workers evenly busy until the end.
+i.e. one `python -m src.train ... --folds K` process. That's 264 jobs for the
+full grid (1320 runs), which keeps N workers evenly busy until the end.
 
 Each job writes only its own files, so parallel jobs never touch the same file:
     results/tables/parts/<dataset>/<job>.csv     its result rows
@@ -42,16 +42,17 @@ from pathlib import Path
 import yaml
 
 from src.merge_results import merge, PARTS_DIR
-from src.utils import PROJECT_ROOT, RAW_RESULTS_CSV, RESULTS_DIR, completed_run_keys, run_key, NO_VARIANT
+from src.utils import PROJECT_ROOT, RAW_RESULTS_CSV, RESULTS_DIR, completed_run_keys, run_key, NO_VARIANT, PROTOCOL
 
-ALL_MODELS = ["bigru_baseline", "bilstm_attention_baseline", "cnn_bigru_reference", "dual_attention_bigru"]
+ALL_MODELS = ["bigru_baseline", "bilstm_attention_baseline", "cnn_bigru_reference", "deepconvlstm",
+              "dual_attention_bigru"]
 DUAL_VARIANTS = ["full", "plain", "channel_only", "temporal_only"]
 LOGS_DIR = RESULTS_DIR / "logs" / "train"
 
 # rough relative cost of one run, used only to start the longest jobs first
 # (from the M1 smoke timings: seconds per epoch by dataset/model)
 DATASET_COST = {"ucihar": 1.0, "wisdm": 1.7, "pamap2": 2.2}
-MODEL_COST = {"bilstm_attention_baseline": 1.3, "cnn_bigru_reference": 0.8}
+MODEL_COST = {"bilstm_attention_baseline": 1.3, "cnn_bigru_reference": 0.8, "deepconvlstm": 1.5}
 
 MAX_AUTO_JOBS = 12
 GPU_GB_PER_JOB = 1.5
@@ -66,7 +67,7 @@ def load_config(dataset):
     path = PROJECT_ROOT / "configs" / f"{dataset}_config.yaml"
     cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     ev = cfg.get("evaluation") or {}
-    return path, ev.get("seeds", [0, 1, 2]), ev["loso_n_folds"]
+    return path, ev.get("seeds", [0, 1, 2, 3, 4]), ev["loso_n_folds"]
 
 
 def build_jobs(datasets, models):
@@ -80,7 +81,7 @@ def build_jobs(datasets, models):
                 for split, fold in [("official", None)] + [("loso", k) for k in range(n_folds)]:
                     name = f"{tag}__{split}" + (f"_fold{fold}" if fold is not None else "")
                     keys = {run_key(dict(model=model, variant=variant, dataset=ds, split_mode=split,
-                                         fold_id=fold, seed=s)) for s in seeds}
+                                         fold_id=fold, seed=s, protocol=PROTOCOL)) for s in seeds}
                     cmd = [sys.executable, "-m", "src.train", "--config", str(cfg_path),
                            "--model", model, "--split_mode", split,
                            "--results_csv", str(PARTS_DIR / ds / f"{name}.csv"),

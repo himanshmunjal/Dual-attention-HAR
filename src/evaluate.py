@@ -38,16 +38,19 @@ FIGURES = RESULTS_DIR / "figures"
 EFFICIENCY_CSV = TABLES / "efficiency.csv"
 PROPOSED = "dual_attention_bigru:full"
 
-MODEL_ORDER = ["bigru_baseline", "bilstm_attention_baseline", "cnn_bigru_reference", "dual_attention_bigru"]
+MODEL_ORDER = ["bigru_baseline", "bilstm_attention_baseline", "cnn_bigru_reference", "deepconvlstm",
+               "dual_attention_bigru"]
 VARIANT_ORDER = [NO_VARIANT, "full", "plain", "channel_only", "temporal_only"]
 DATASET_ORDER = ["ucihar", "wisdm", "pamap2"]
 SHORT = {"bigru_baseline": "BiGRU", "bilstm_attention_baseline": "BiLSTM+Attn",
-         "cnn_bigru_reference": "CNN+BiGRU", "dual_attention_bigru": "DualAttn-BiGRU"}
+         "cnn_bigru_reference": "CNN+BiGRU", "deepconvlstm": "DeepConvLSTM",
+         "dual_attention_bigru": "DualAttn-BiGRU"}
 # fixed categorical order (validated palette, light surface); entity -> colour never changes
 MODEL_COLORS = {"bigru_baseline": "#2a78d6", "bilstm_attention_baseline": "#eb6834",
-                "cnn_bigru_reference": "#1baf7a", "dual_attention_bigru": "#eda100"}
+                "cnn_bigru_reference": "#1baf7a", "dual_attention_bigru": "#eda100",
+                "deepconvlstm": "#e87ba4"}
 MODEL_MARKERS = {"bigru_baseline": "o", "bilstm_attention_baseline": "s",
-                 "cnn_bigru_reference": "^", "dual_attention_bigru": "D"}
+                 "cnn_bigru_reference": "^", "dual_attention_bigru": "D", "deepconvlstm": "v"}
 INK, INK_MUTED, GRID, NEUTRAL = "#1f1f1e", "#6b6a64", "#e6e5e0", "#b9b8b0"
 HIGHLIGHT = "#2a78d6"
 

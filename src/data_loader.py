@@ -30,9 +30,11 @@ from src.preprocessing import normalize_channels, PROCESSED_DIR
 # Number of subject-groups to fold into for LOSO CV. True leave-ONE-out is used
 # where the subject count is small (PAMAP2); larger subject pools are grouped
 # into folds for tractable runtime. Document/justify in the report if changed.
+# 10/12 folds (protocol v2, was 6/6): with 6 folds a two-sided Wilcoxon can't go
+# below p=0.031 (0.19 after Holm over 6 comparisons), so no per-dataset test could pass.
 LOSO_N_FOLDS = {
-    "ucihar": 6,   # 30 subjects -> ~5 subjects held out per fold
-    "wisdm": 6,    # 36 subjects -> ~6 subjects held out per fold
+    "ucihar": 10,  # 30 subjects -> 3 subjects held out per fold
+    "wisdm": 12,   # 36 subjects -> 3 subjects held out per fold
     "pamap2": 8,   # 8 subjects (109 excluded) -> true leave-one-subject-out
 }
 
@@ -160,18 +162,18 @@ def encode_with_classes(y: np.ndarray, classes: np.ndarray) -> np.ndarray:
     return idx.astype(np.int64)
 
 
-def pick_val_subjects(train_subjects, val_fraction: float, seed: int):
-    """Deterministic subject-level validation pick (>= 1 subject). Depends only
-    on the fold, never on the model or training seed, so every model sees
-    identical train/val/test partitions."""
+def pick_val_subjects(train_subjects, val_fraction: float, seed: int, min_subjects: int = 2):
+    """Deterministic subject-level validation pick (>= min_subjects subjects).
+    Depends only on the fold, never on the model or training seed, so every
+    model sees identical train/val/test partitions."""
     subs = np.unique(train_subjects)
-    n_val = max(1, int(round(val_fraction * len(subs))))
+    n_val = max(min_subjects, int(round(val_fraction * len(subs))))
     rng = np.random.RandomState(seed)
     return sorted(rng.choice(subs, size=n_val, replace=False).tolist())
 
 
 def iter_folds(dataset: str, split_mode: str, n_folds: Optional[int] = None,
-               val_fraction: float = 0.1, seed: int = SPLIT_SEED):
+               val_fraction: float = 0.2, min_val_subjects: int = 2, seed: int = SPLIT_SEED):
     """
     Yields one dict per fold (a single fold for split_mode="official"):
         fold_id (None for official), held_out_subjects, val_subjects, classes,
@@ -204,7 +206,7 @@ def iter_folds(dataset: str, split_mode: str, n_folds: Optional[int] = None,
 
     for fold_id, test_mask in test_masks:
         val_seed = seed + 1000 + (fold_id if fold_id is not None else 0)
-        val_subjects = pick_val_subjects(subject[~test_mask], val_fraction, val_seed)
+        val_subjects = pick_val_subjects(subject[~test_mask], val_fraction, val_seed, min_val_subjects)
         val_mask = np.isin(subject, val_subjects) & ~test_mask
         train_mask = ~test_mask & ~val_mask
 

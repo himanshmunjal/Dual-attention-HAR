@@ -28,7 +28,8 @@ from src.utils import RAW_RESULTS_CSV, RESULTS_DIR, RESULT_COLUMNS, RUN_KEY
 PARTS_DIR = RESULTS_DIR / "tables" / "parts"
 
 DATASET_ORDER = ["ucihar", "wisdm", "pamap2"]
-MODEL_ORDER = ["bigru_baseline", "bilstm_attention_baseline", "cnn_bigru_reference", "dual_attention_bigru"]
+MODEL_ORDER = ["bigru_baseline", "bilstm_attention_baseline", "cnn_bigru_reference", "deepconvlstm",
+               "dual_attention_bigru"]
 VARIANT_ORDER = ["-", "full", "plain", "channel_only", "temporal_only"]
 SPLIT_ORDER = ["official", "loso"]
 

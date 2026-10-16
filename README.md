@@ -24,7 +24,7 @@ UCI-HAR, WISDM, PAMAP2 — evaluated independently in native mode (own sampling 
 ## Evaluation
 
 - Official train/test split (comparability with literature) **and** subject-independent (LOSO) k-fold (headline result).
-- ≥3 seeds per fold, mean ± std reporting.
+- 5 seeds per fold, mean ± std reporting.
 - Params, FLOPs, and inference latency logged for every model.
 - Wilcoxon signed-rank / paired t-test significance testing vs. each baseline.
 
@@ -57,9 +57,10 @@ That single command does everything:
 - **Check the GPU.** Near the top of the output (also in `results/logs/setup.log`) you should see
   `cuda available: True (NVIDIA GeForce ...)`. If a GPU is present but CUDA isn't usable, the script
   stops instead of silently training on the CPU.
-- **Scale.** 7 arms (3 baselines + 4 ablation arms of the proposed model) × 3 seeds × (1 official split + LOSO folds:
-  6 UCI-HAR, 6 WISDM, 8 PAMAP2) gives **483 training runs**. Keep the laptop plugged in and set it to never sleep.
-- **Parallel training.** The 483 runs are split into 161 jobs (one per dataset × model × variant × split × fold,
+- **Scale.** 8 arms (4 baselines + 4 ablation arms of the proposed model) × 5 seeds × (1 official split + LOSO folds:
+  10 UCI-HAR, 12 WISDM, 8 PAMAP2) gives **1320 training runs** (evaluation protocol v2, see
+  `docs/protocol_v2.md`). Keep the laptop plugged in and set it to never sleep.
+- **Parallel training.** The 1320 runs are split into 264 jobs (one per dataset × model × variant × split × fold,
   each covering all seeds), and `JOBS` of them run at the same time. `JOBS=auto` (the default) sizes this from the
   hardware: on an NVIDIA GPU up to 12 jobs, limited by CPU cores, GPU memory (~1.5 GB/job) and RAM (~2.5 GB/job).
   For example, a 3090 with 16 cores and 32 GB RAM runs 11 jobs; with 64 GB it runs 12. On a CPU-only machine it's
@@ -70,7 +71,7 @@ That single command does everything:
   the others keep going and the script stops with an error after training, listing the failed jobs' logs.
 - **Resume.** If the run is interrupted (crash, reboot, Ctrl-C), run the same command again. Downloads that are
   already present are skipped, and so is every run already recorded in `results/tables/raw_results.csv`
-  (keyed on model/variant/dataset/split/fold/seed).
+  (keyed on model/variant/dataset/split/fold/seed/protocol).
 
 **Options** (environment variables, e.g. `JOBS=10 DEVICE=cuda bash scripts/run_all.sh`):
 
@@ -133,7 +134,7 @@ Project underway — see week-by-week timeline in the project plan. Repo committ
 configs/          per-dataset YAML configs (hyperparameters, seeds, LOSO folds)
 data/             download_data.py; raw/ and processed/ are generated (git-ignored)
 src/              preprocessing, data_loader, train, profile_efficiency, stats_test, evaluate, utils
-src/models/       bigru_baseline, bilstm_attention_baseline, cnn_bigru_reference, dual_attention_bigru
+src/models/       bigru_baseline, bilstm_attention_baseline, cnn_bigru_reference, deepconvlstm, dual_attention_bigru
 scripts/          run_all.sh -- the end-to-end pipeline
 notebooks/        exploration only (not used for reported results)
 results/          tables/, preds/, figures/ (generated); archive/ holds superseded runs

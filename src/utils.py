@@ -41,9 +41,16 @@ RAW_RESULTS_CSV = RESULTS_DIR / "tables" / "raw_results.csv"
 PREDS_DIR = RESULTS_DIR / "preds"
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
 
+# Evaluation-protocol version, logged with every run and part of its key.
+# Bump it whenever folds, validation or model selection change, so results of
+# an older protocol are neither resumed from nor mixed into the tables.
+#   (none) 2026-10-15 run: 6/6/8 LOSO folds, 3 seeds, early stopping on val loss
+#   v2     10/12/8 LOSO folds, 5 seeds, >=2 val subjects (20%), selection on val macro-F1
+PROTOCOL = "v2"
+
 # Identity of one run. A run whose key already exists in raw_results.csv is
 # skipped by train.py (resume after a crash without duplicating rows).
-RUN_KEY = ["model", "variant", "dataset", "split_mode", "fold_id", "seed"]
+RUN_KEY = ["model", "variant", "dataset", "split_mode", "fold_id", "seed", "protocol"]
 
 # Fixed column order for raw_results.csv, so rows written by different
 # jobs/machines always line up.
@@ -51,7 +58,7 @@ RESULT_COLUMNS = RUN_KEY + [
     "accuracy", "macro_f1", "weighted_f1", "n_train", "n_val", "n_test", "num_classes",
     "held_out_subjects", "val_subjects",
     "params", "flops",
-    "best_epoch", "epochs_trained", "best_val_loss", "train_time_s",
+    "best_epoch", "epochs_trained", "best_val_loss", "best_val_f1", "train_time_s",
     "device", "device_name", "git_commit", "timestamp", "hparams",
 ]
 
@@ -225,13 +232,15 @@ def profile_model(model: torch.nn.Module, input_shape: tuple, device: torch.devi
 # Early stopping
 # ---------------------------------------------------------------------------
 class EarlyStopping:
-    """Stops training when monitored value (lower=better, e.g. val loss)
-    hasn't improved for `patience` epochs. Tracks best state_dict in memory."""
+    """Stops training when the monitored value hasn't improved for `patience`
+    epochs (mode="min": lower is better, e.g. val loss; mode="max": higher is
+    better, e.g. val macro-F1). Tracks best state_dict in memory."""
 
-    def __init__(self, patience: int = 10, min_delta: float = 1e-4):
+    def __init__(self, patience: int = 10, min_delta: float = 1e-4, mode: str = "min"):
         self.patience = patience
         self.min_delta = min_delta
-        self.best_value = float("inf")
+        self.sign = 1.0 if mode == "min" else -1.0
+        self.best_value = float("inf") if mode == "min" else float("-inf")
         self.best_epoch = -1
         self.counter = 0
         self.best_state = None
@@ -240,7 +249,7 @@ class EarlyStopping:
 
     def step(self, value: float, model: torch.nn.Module):
         self._epoch += 1
-        if value < self.best_value - self.min_delta:
+        if self.sign * value < self.sign * self.best_value - self.min_delta:
             self.best_value = value
             self.best_epoch = self._epoch
             self.counter = 0
@@ -311,13 +320,19 @@ def completed_run_keys(csv_path: Path = RAW_RESULTS_CSV) -> set:
     if not csv_path.exists() or csv_path.stat().st_size == 0:
         return set()
     df = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
-    return {tuple(r) for r in df[RUN_KEY].itertuples(index=False)}
+    # rows logged before `protocol` existed get an empty protocol, so they never count as done
+    return {tuple(r) for r in df.reindex(columns=RUN_KEY, fill_value="").itertuples(index=False)}
 
 
-def load_results(csv_path: Path = RAW_RESULTS_CSV) -> pd.DataFrame:
-    """Read raw_results.csv, keeping only the latest row per run key."""
-    df = pd.read_csv(csv_path)
+def load_results(csv_path: Path = RAW_RESULTS_CSV, protocol: str = PROTOCOL) -> pd.DataFrame:
+    """Read raw_results.csv, keeping only rows of `protocol` and the latest row per run key."""
+    df = pd.read_csv(csv_path, dtype={"protocol": str})
     df["variant"] = df["variant"].fillna(NO_VARIANT)
+    n_all = len(df)
+    df = df[df["protocol"] == protocol] if "protocol" in df else df.iloc[:0]
+    if len(df) < n_all:
+        print(f"load_results: ignoring {n_all - len(df)} rows from another protocol than '{protocol}' "
+              f"(archive them, see results/archive/)")
     return df.drop_duplicates(subset=RUN_KEY, keep="last").reset_index(drop=True)
 
 

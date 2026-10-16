@@ -1,7 +1,7 @@
 """
 src/train.py
 
-Generic training driver for all 4 models and the dual-attention ablation arms.
+Generic training driver for all 5 models and the dual-attention ablation arms.
 
 Supports both evaluation protocols from the plan:
   --split_mode official  -> single train/test split, run N seeds
@@ -19,6 +19,9 @@ each write to their own --results_csv and pass the merged CSV via
 
 Early stopping monitors a SUBJECT-WISE validation set carved out of each
 fold's training subjects (data_loader.iter_folds), never the test subjects.
+By default the best epoch is picked on validation macro-F1 (--select_metric):
+under subject shift, validation loss rises as soon as the model gets
+confident, often after 1-3 epochs, while macro-F1 is still improving.
 
 Examples:
     python -m src.train --config configs/ucihar_config.yaml --model bigru_baseline
@@ -43,13 +46,14 @@ from src.data_loader import iter_folds, build_dataloaders, HARDataset
 from src.models.bigru_baseline import BiGRUBaseline
 from src.models.bilstm_attention_baseline import BiLSTMAttentionBaseline
 from src.models.cnn_bigru_reference import CNNBiGRUReference
+from src.models.deepconvlstm import DeepConvLSTM
 from src.models.dual_attention_bigru import DualAttentionBiGRU
 from src.preprocessing import NATIVE_CONFIGS
 from src.utils import (
     set_seed, get_device, device_name, git_commit, compute_metrics,
     count_parameters, compute_flops, EarlyStopping, save_checkpoint,
     save_predictions, append_result_row, completed_run_keys, run_key, run_name,
-    to_json, NO_VARIANT, RAW_RESULTS_CSV, PREDS_DIR, CHECKPOINT_DIR, RESULTS_DIR,
+    to_json, NO_VARIANT, PROTOCOL, RAW_RESULTS_CSV, PREDS_DIR, CHECKPOINT_DIR, RESULTS_DIR,
 )
 
 # ---------------------------------------------------------------------------
@@ -59,6 +63,7 @@ MODEL_REGISTRY = {
     "bigru_baseline": BiGRUBaseline,
     "bilstm_attention_baseline": BiLSTMAttentionBaseline,
     "cnn_bigru_reference": CNNBiGRUReference,
+    "deepconvlstm": DeepConvLSTM,
     "dual_attention_bigru": DualAttentionBiGRU,
 }
 
@@ -103,25 +108,32 @@ def build_model(model_name: str, input_size: int, num_classes: int,
 # ---------------------------------------------------------------------------
 # Single train/eval run (one seed, one split or fold)
 # ---------------------------------------------------------------------------
-def _mean_loss(model, loader, criterion, device):
+def _evaluate_val(model, loader, criterion, device):
+    """(mean loss, macro-F1) on a validation loader."""
     model.eval()
     total, n = 0.0, 0
+    preds, trues = [], []
     with torch.no_grad():
         for xb, yb in loader:
             xb, yb = xb.to(device), yb.to(device)
-            total += criterion(model(xb), yb).item() * len(yb)
+            logits = model(xb)
+            total += criterion(logits, yb).item() * len(yb)
             n += len(yb)
-    return total / max(n, 1)
+            preds.append(logits.argmax(dim=1).cpu().numpy())
+            trues.append(yb.cpu().numpy())
+    f1 = compute_metrics(np.concatenate(trues), np.concatenate(preds))["macro_f1"] if n else 0.0
+    return total / max(n, 1), f1
 
 
 def train_one_run(model: nn.Module, train_loader: DataLoader, test_loader: DataLoader,
                    device: torch.device, epochs: int, lr: float, patience: int,
                    val_fraction: float = 0.1, val_loader: DataLoader = None,
                    grad_clip: float = 1.0, lr_scheduler: str = "plateau",
-                   return_details: bool = False):
+                   select_metric: str = "val_macro_f1", return_details: bool = False):
     """
-    Trains `model`, early-stopping on validation loss, restores the best
-    epoch, and evaluates on test_loader.
+    Trains `model`, early-stopping on `select_metric` (val_macro_f1 or
+    val_loss; the plateau LR scheduler follows the same metric), restores the
+    best epoch, and evaluates on test_loader.
 
     val_loader should be a subject-wise validation set (train.py always
     passes one). If it is None (old notebook calls), a random window-level
@@ -134,7 +146,8 @@ def train_one_run(model: nn.Module, train_loader: DataLoader, test_loader: DataL
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
-    scheduler = (torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=3)
+    mode = "max" if select_metric == "val_macro_f1" else "min"
+    scheduler = (torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=mode, factor=0.5, patience=3)
                  if lr_scheduler == "plateau" else None)
 
     if val_loader is None:
@@ -147,8 +160,8 @@ def train_one_run(model: nn.Module, train_loader: DataLoader, test_loader: DataL
         train_loader = DataLoader(train_ds, batch_size=train_loader.batch_size, shuffle=True)
         val_loader = DataLoader(val_ds, batch_size=train_loader.batch_size, shuffle=False)
 
-    stopper = EarlyStopping(patience=patience)
-    train_losses, val_losses = [], []
+    stopper = EarlyStopping(patience=patience, mode=mode)
+    train_losses, val_losses, val_f1s = [], [], []
     t0 = time.perf_counter()
 
     for epoch in range(epochs):
@@ -166,15 +179,17 @@ def train_one_run(model: nn.Module, train_loader: DataLoader, test_loader: DataL
             seen += len(yb)
         train_losses.append(running / max(seen, 1))
 
-        val_loss = _mean_loss(model, val_loader, criterion, device)
+        val_loss, val_f1 = _evaluate_val(model, val_loader, criterion, device)
         val_losses.append(val_loss)
+        val_f1s.append(val_f1)
+        monitored = val_f1 if select_metric == "val_macro_f1" else val_loss
         if scheduler is not None:
-            scheduler.step(val_loss)
+            scheduler.step(monitored)
 
-        stopper.step(val_loss, model)
+        stopper.step(monitored, model)
         if stopper.should_stop:
             print(f"    early stop at epoch {epoch+1} (best epoch {stopper.best_epoch}, "
-                  f"val_loss={stopper.best_value:.4f})")
+                  f"{select_metric}={stopper.best_value:.4f})")
             break
 
     train_time = time.perf_counter() - t0
@@ -194,9 +209,10 @@ def train_one_run(model: nn.Module, train_loader: DataLoader, test_loader: DataL
         return metrics
     details = dict(
         y_true=y_true, y_pred=y_pred,
-        train_losses=np.array(train_losses), val_losses=np.array(val_losses),
+        train_losses=np.array(train_losses), val_losses=np.array(val_losses), val_f1s=np.array(val_f1s),
         best_epoch=stopper.best_epoch, epochs_trained=len(train_losses),
-        best_val_loss=stopper.best_value, train_time_s=train_time,
+        best_val_loss=val_losses[stopper.best_epoch - 1], best_val_f1=val_f1s[stopper.best_epoch - 1],
+        train_time_s=train_time,
     )
     return metrics, details
 
@@ -219,7 +235,8 @@ def run(args):
     split_modes = ["official", "loso"] if args.split_mode == "both" else [args.split_mode]
     hparams = dict(epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, patience=args.patience,
                    grad_clip=args.grad_clip, lr_scheduler=args.lr_scheduler,
-                   val_fraction=args.val_fraction, **model_kwargs_from(args))
+                   select_metric=args.select_metric, val_fraction=args.val_fraction,
+                   min_val_subjects=args.min_val_subjects, **model_kwargs_from(args))
 
     done = set()
     if not args.force:
@@ -230,7 +247,7 @@ def run(args):
 
     for split_mode in split_modes:
         for fold in iter_folds(args.dataset, split_mode, n_folds=args.n_folds,
-                               val_fraction=args.val_fraction):
+                               val_fraction=args.val_fraction, min_val_subjects=args.min_val_subjects):
             fold_id = fold["fold_id"]
             if split_mode == "loso" and args.folds is not None and fold_id not in args.folds:
                 continue
@@ -241,7 +258,7 @@ def run(args):
                 vflag = variant if variant != NO_VARIANT else "full"
                 for seed in args.seeds:
                     row_key = dict(model=args.model, variant=variant, dataset=args.dataset,
-                                   split_mode=split_mode, fold_id=fold_id, seed=seed)
+                                   split_mode=split_mode, fold_id=fold_id, seed=seed, protocol=PROTOCOL)
                     if run_key(row_key) in done:
                         n_skip += 1
                         continue
@@ -265,7 +282,8 @@ def run(args):
                         model, train_loader, test_loader, device,
                         epochs=args.epochs, lr=args.lr, patience=args.patience,
                         val_loader=val_loader, grad_clip=args.grad_clip,
-                        lr_scheduler=args.lr_scheduler, return_details=True,
+                        lr_scheduler=args.lr_scheduler, select_metric=args.select_metric,
+                        return_details=True,
                     )
                     print(f"    -> acc={metrics['accuracy']:.4f} macro_f1={metrics['macro_f1']:.4f} "
                           f"(best epoch {det['best_epoch']}/{det['epochs_trained']}, "
@@ -276,7 +294,7 @@ def run(args):
                         Path(args.preds_dir) / f"{name}.npz",
                         y_true=det["y_true"], y_pred=det["y_pred"], classes=fold["classes"],
                         subject_test=fold["subject_test"],
-                        train_losses=det["train_losses"], val_losses=det["val_losses"],
+                        train_losses=det["train_losses"], val_losses=det["val_losses"], val_f1s=det["val_f1s"],
                     )
                     if not args.no_checkpoints:
                         save_checkpoint(model, Path(args.checkpoint_dir) / args.model / f"{name}.pt",
@@ -290,7 +308,8 @@ def run(args):
                         "val_subjects": " ".join(map(str, fold["val_subjects"])),
                         "params": count_parameters(model), "flops": flops_cache[variant],
                         "best_epoch": det["best_epoch"], "epochs_trained": det["epochs_trained"],
-                        "best_val_loss": det["best_val_loss"], "train_time_s": det["train_time_s"],
+                        "best_val_loss": det["best_val_loss"], "best_val_f1": det["best_val_f1"],
+                        "train_time_s": det["train_time_s"],
                         "device": device.type, "device_name": dev_name, "git_commit": commit,
                         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                         "hparams": to_json(hparams),
@@ -310,6 +329,8 @@ CONFIG_KEYS = {
     ("evaluation", "seeds"): "seeds",
     ("evaluation", "loso_n_folds"): "n_folds",
     ("evaluation", "val_fraction"): "val_fraction",
+    ("evaluation", "min_val_subjects"): "min_val_subjects",
+    ("training", "select_metric"): "select_metric",
     ("training", "epochs"): "epochs",
     ("training", "batch_size"): "batch_size",
     ("training", "lr"): "lr",
@@ -343,12 +364,16 @@ def build_parser():
     p.add_argument("--dual_attn_variant", nargs="+", default=["full"],
                    choices=list(DUAL_ATTN_VARIANTS.keys()) + ["all"],
                    help="ablation arm(s) for dual_attention_bigru ('all' = every arm); ignored by other models")
-    p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
+    p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     p.add_argument("--n_folds", type=int, default=None, help="override LOSO_N_FOLDS default")
     p.add_argument("--folds", type=int, nargs="+", default=None,
                    help="only these LOSO fold ids (default: all); the official split is unaffected")
-    p.add_argument("--val_fraction", type=float, default=0.1,
+    p.add_argument("--val_fraction", type=float, default=0.2,
                    help="fraction of each fold's training SUBJECTS held out for early stopping")
+    p.add_argument("--min_val_subjects", type=int, default=2,
+                   help="at least this many validation subjects per fold")
+    p.add_argument("--select_metric", choices=["val_macro_f1", "val_loss"], default="val_macro_f1",
+                   help="validation metric for early stopping, best-epoch selection and the LR scheduler")
     p.add_argument("--epochs", type=int, default=50)
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--lr", type=float, default=1e-3)
