@@ -49,6 +49,7 @@ import torch
 import torch.nn as nn
 
 from src.attention_modules import GatedChannelAttention, TemporalAttention
+from src.models.stacked_rnn import StackedRNN
 
 
 class DualAttentionBiGRU(nn.Module):
@@ -77,11 +78,13 @@ class DualAttentionBiGRU(nn.Module):
                 use_spectral_gate=use_spectral_gate,
             )
 
-        self.gru = nn.GRU(
+        # stacked single-layer GRUs with nn.Dropout between them == nn.GRU(num_layers, dropout);
+        # avoids cuDNN's built-in RNN dropout, which crashes the process at exit on Windows (see stacked_rnn.py)
+        self.gru = StackedRNN(
+            "gru",
             input_size=input_size,
             hidden_size=hidden_size,
             num_layers=num_layers,
-            batch_first=True,
             bidirectional=True,
             dropout=dropout if num_layers > 1 else 0.0,
         )
