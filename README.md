@@ -49,7 +49,13 @@ DEVICE=cuda bash scripts/run_all.sh      # on a machine without an NVIDIA GPU: b
 ```
 
 That single command does everything:
-`venv -> download -> preprocess -> smoke -> train -> profile -> stats -> evaluate`.
+`venv -> archive -> download -> preprocess -> smoke -> train -> profile -> stats -> evaluate`.
+
+- **Old results.** The `archive` step copies results of an older evaluation protocol (e.g. the 2026-10-15
+  v1 run) to `results/archive/<date>_before_v2/` and leaves only current-protocol runs in `results/`, so a
+  machine that still holds an earlier run needs no manual cleanup. A half-finished v2 run is kept and resumes.
+- **Smoke test.** One epoch of every model on one fold; the pipeline stops at the first model that fails or
+  exits non-zero, before any training time is spent.
 
 - **Environment.** On the first run the script creates `.venv/` and installs `requirements.txt`, and reinstalls
   only when that file changes. If `nvidia-smi` finds a GPU, it installs the CUDA build of PyTorch first. Don't
@@ -80,7 +86,7 @@ That single command does everything:
 | `DEVICE` | `auto` | `cuda`, `cpu`, `mps` or `auto` (CUDA if available, else CPU). Use `cuda` on a GPU machine so a broken install fails loudly |
 | `JOBS` | `auto` | number of training jobs run at the same time (`1` = one after another). Lower it if you hit out-of-memory errors |
 | `DATASETS` | `ucihar wisdm pamap2` | subset of datasets |
-| `STEPS` | all | subset of `download preprocess smoke train profile stats evaluate` |
+| `STEPS` | all | subset of `archive download preprocess smoke train profile stats evaluate` |
 | `TORCH_CUDA` | `cu128` | PyTorch CUDA wheel index. Try `cu126` if the driver is too old for the default |
 | `BASE_PY` | auto | interpreter used to create the venv, e.g. `python3.12` |
 | `VENV` | `.venv` | venv location |

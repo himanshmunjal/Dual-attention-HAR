@@ -6,9 +6,16 @@
 #   DATASETS="ucihar" bash scripts/run_all.sh
 #   STEPS="train evaluate" bash scripts/run_all.sh   # run only some steps
 #
-# Steps: download preprocess smoke train profile stats evaluate
+# Steps: archive download preprocess smoke train profile stats evaluate
 # Safe to re-run: downloads are skipped if present and every finished training
 # run is skipped (resume from results/tables/raw_results.csv).
+#
+# Evaluation protocol v2 (docs/protocol_v2.md): 5 models -- BiGRU, BiLSTM+Attn,
+# CNN+BiGRU, DeepConvLSTM, and Dual-Attention BiGRU with its 4 ablation arms --
+# x 3 datasets x (official split + 10/12/8 LOSO folds) x 5 seeds = 1320 runs,
+# model selection on validation macro-F1. The "archive" step first moves results
+# of an older protocol (e.g. the 2026-10-15 v1 run) to results/archive/, so they
+# are never resumed from or mixed into the tables.
 # Logs: results/logs/<step>.log; training: results/logs/train.log (progress)
 # and results/logs/train/<dataset>/<job>.log (one per job).
 #
@@ -36,7 +43,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DATASETS=${DATASETS:-"ucihar wisdm pamap2"}
-STEPS=${STEPS:-"download preprocess smoke train profile stats evaluate"}
+STEPS=${STEPS:-"archive download preprocess smoke train profile stats evaluate"}
 JOBS=${JOBS:-auto}
 DEVICE=${DEVICE:-auto}
 VENV=${VENV:-.venv}
@@ -80,7 +87,7 @@ install_python_windows() {
 }
 
 setup_env() {
-  banner "0/7 python environment ($VENV)"
+  banner "0/8 python environment ($VENV)"
   # a venv left half-made by an interrupted first run is rebuilt
   if [[ -d $VENV && ! -x $VENV/Scripts/python.exe && ! -x $VENV/bin/python ]]; then
     echo "$VENV is incomplete -> recreating it"; rm -rf "$VENV"
@@ -142,50 +149,62 @@ else
   if [[ -x $VENV/Scripts/python.exe ]]; then PY="$VENV/Scripts/python.exe"; else PY="$VENV/bin/python"; fi
 fi
 
+# what is about to run: commit, protocol, models and grid size
+$PY -c "from src.utils import PROTOCOL, git_commit; print(f'code: commit {git_commit()} | evaluation protocol {PROTOCOL}')"
+echo "models: $MODELS"
+
+if has_step archive; then
+  banner "1/8 archive results of older evaluation protocols"
+  $PY -m src.archive_results 2>&1 | tee results/logs/archive.log
+fi
+
 if has_step download; then
-  banner "1/7 download raw datasets"
+  banner "2/8 download raw datasets"
   $PY data/download_data.py --dataset all 2>&1 | tee results/logs/download.log
 fi
 
 if has_step preprocess; then
-  banner "2/7 preprocess (window + save .npy)"
+  banner "3/8 preprocess (window + save .npy)"
   $PY -m src.preprocessing --dataset all 2>&1 | tee results/logs/preprocess.log
   $PY -m src.data_loader 2>&1 | tee -a results/logs/preprocess.log
 fi
 
 if has_step smoke; then
-  banner "3/7 smoke test (1 epoch, 1 fold; writes results/smoke/ only)"
+  banner "4/8 smoke test (1 epoch, 1 fold, every model; writes results/smoke/ only)"
+  # stops at the first model that fails or exits non-zero (e.g. a native crash at exit),
+  # before hours of training are spent
   for ds in $DATASETS; do
     for m in $MODELS; do
       $PY -m src.train --config "configs/${ds}_config.yaml" --model "$m" --split_mode both \
-          --dual_attn_variant all --device "$DEVICE" --smoke
+          --dual_attn_variant all --device "$DEVICE" --smoke \
+        || { rc=$?; echo "SMOKE TEST FAILED: $m on $ds (exit code $rc) -- see results/logs/smoke.log"; exit 1; }
     done
   done 2>&1 | tee results/logs/smoke.log
 fi
 
 if has_step train; then
-  banner "4/7 train all models x variants x folds x seeds ($JOBS parallel jobs)"
+  banner "5/8 train all models x variants x folds x seeds ($JOBS parallel jobs)"
   $PY -m src.run_parallel --datasets $DATASETS --models $MODELS --jobs "$JOBS" --device "$DEVICE" \
       2>&1 | tee results/logs/train.log
 fi
 
 if has_step profile; then
-  banner "5/7 efficiency profiling (params / FLOPs / latency, one controlled pass)"
-  $PY -m src.profile_efficiency --datasets $DATASETS 2>&1 | tee results/logs/profile.log
+  banner "6/8 efficiency profiling (params / FLOPs / latency, one controlled pass)"
+  $PY -m src.profile_efficiency --datasets $DATASETS --models $MODELS 2>&1 | tee results/logs/profile.log
 fi
 
 if has_step stats; then
-  banner "6/7 significance tests (Wilcoxon / paired t, LOSO folds)"
+  banner "7/8 significance tests (Wilcoxon / paired t, LOSO folds)"
   $PY -m src.stats_test 2>&1 | tee results/logs/stats.log
 fi
 
 if has_step evaluate; then
-  banner "7/7 master table, confusion matrices, figures"
+  banner "8/8 master table, confusion matrices, figures"
   $PY -m src.evaluate 2>&1 | tee results/logs/evaluate.log
 fi
 
 banner "done"
-echo "results/tables/raw_results.csv       every run (one row per model/variant/dataset/split/fold/seed)"
+echo "results/tables/raw_results.csv       every run (one row per model/variant/dataset/split/fold/seed/protocol)"
 echo "results/tables/parts/                per-job results (merged into raw_results.csv)"
 echo "results/logs/train/                  per-job training logs"
 echo "results/tables/master_comparison.md  paper table   (.csv alongside)"
