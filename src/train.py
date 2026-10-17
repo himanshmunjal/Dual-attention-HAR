@@ -165,6 +165,7 @@ def train_one_run(model: nn.Module, train_loader: DataLoader, test_loader: DataL
     t0 = time.perf_counter()
 
     for epoch in range(epochs):
+        t_epoch = time.perf_counter()
         model.train()
         running, seen = 0.0, 0
         for xb, yb in train_loader:
@@ -187,6 +188,9 @@ def train_one_run(model: nn.Module, train_loader: DataLoader, test_loader: DataL
             scheduler.step(monitored)
 
         stopper.step(monitored, model)
+        # one line per epoch, so a job's log shows it is progressing (and how fast)
+        print(f"    epoch {epoch+1:>2}/{epochs}  train_loss={train_losses[-1]:.4f}  val_loss={val_loss:.4f}  "
+              f"val_f1={val_f1:.4f}  {time.perf_counter() - t_epoch:.1f}s")
         if stopper.should_stop:
             print(f"    early stop at epoch {epoch+1} (best epoch {stopper.best_epoch}, "
                   f"{select_metric}={stopper.best_value:.4f})")

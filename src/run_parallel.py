@@ -55,6 +55,7 @@ DATASET_COST = {"ucihar": 1.0, "wisdm": 1.7, "pamap2": 2.2}
 MODEL_COST = {"bilstm_attention_baseline": 1.3, "cnn_bigru_reference": 0.8, "deepconvlstm": 1.5}
 
 MAX_AUTO_JOBS = 12
+HEARTBEAT_S = 15 * 60  # status line while jobs run, so a slow run never looks frozen
 GPU_GB_PER_JOB = 1.5
 RAM_GB_PER_GPU_JOB = 2.5
 RAM_GB_PER_CPU_JOB = 1.5
@@ -181,7 +182,7 @@ def run_pool(jobs, args, n_jobs, threads, n_gpus):
     total_cost = sum(j["cost"] for j in jobs)
     running, failed = [], []
     done_cost, n_done, t_start = 0.0, 0, time.time()
-    slot = 0
+    slot, last_beat = 0, time.time()
 
     try:
         while queue or running:
@@ -192,6 +193,12 @@ def run_pool(jobs, args, n_jobs, threads, n_gpus):
                 running.append(job)
                 print(f"  start  {job['name']}" + (f" (retry {job['attempts'] - 1})" if job["attempts"] > 1 else ""))
             time.sleep(1)
+            if running and time.time() - last_beat >= HEARTBEAT_S:
+                last_beat = time.time()
+                oldest = max(running, key=lambda j: time.time() - j["t0"])
+                print(f"  ...    {time.strftime('%H:%M')} {len(running)} running, {n_done}/{len(jobs)} jobs done, "
+                      f"elapsed {fmt_time(time.time() - t_start)}; longest running: {oldest['name']} "
+                      f"for {fmt_time(time.time() - oldest['t0'])} -- per-epoch progress in {oldest['log']}")
             for job in [j for j in running if j["proc"].poll() is not None]:
                 running.remove(job)
                 job["log_handle"].close()
@@ -246,10 +253,16 @@ def main():
     cpus, gpus, ram = os.cpu_count() or 1, gpu_memory_gb(), ram_gb()
     hw = (f"{cpus} CPU threads, RAM {f'{ram:.0f} GB' if ram else 'unknown'}, "
           + (f"{len(gpus)} GPU(s) [{', '.join(f'{g:.0f} GB' for g in gpus)}]" if gpus else "no NVIDIA GPU"))
+    auto_n, auto_why = auto_jobs(args.device, gpus, cpus, ram)
     if args.jobs == "auto":
-        n_jobs, why = auto_jobs(args.device, gpus, cpus, ram)
+        n_jobs, why = auto_n, auto_why
     else:
         n_jobs, why = max(1, int(args.jobs)), "set by --jobs / JOBS"
+        if n_jobs > auto_n:
+            print(f"WARNING: {n_jobs} jobs is more than this machine's limit of {auto_n} ({auto_why}).\n"
+                  f"  On Windows, jobs that don't fit in GPU memory are not stopped -- the driver moves GPU\n"
+                  f"  memory into system RAM and every job slows down 10-100x. Use JOBS=auto unless you\n"
+                  f"  know the jobs fit (check 'Shared GPU memory' in Task Manager > Performance > GPU).")
     n_jobs = min(n_jobs, max(1, len(todo)))
     threads = args.threads or max(1, cpus // n_jobs)
     n_gpus = len(gpus) if args.device in ("auto", "cuda") else 0
