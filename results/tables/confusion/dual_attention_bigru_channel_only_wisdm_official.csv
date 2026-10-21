@@ -1,0 +1,7 @@
+,pred_walking,pred_jogging,pred_upstairs,pred_downstairs,pred_sitting,pred_standing
+true_walking,13935,23,975,633,0,4
+true_jogging,296,13995,115,43,1,0
+true_upstairs,320,493,5390,690,29,148
+true_downstairs,196,170,711,3495,7,21
+true_sitting,0,0,0,0,1510,410
+true_standing,36,0,65,5,34,1385

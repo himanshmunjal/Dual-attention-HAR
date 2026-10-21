@@ -1,0 +1,13 @@
+,pred_lying,pred_sitting,pred_standing,pred_walking,pred_running,pred_cycling,pred_nordic_walking,pred_asc_stairs,pred_desc_stairs,pred_vacuuming,pred_ironing,pred_rope_jumping
+true_lying,6819,227,113,1,0,6,0,22,9,79,95,69
+true_sitting,312,4250,1151,0,0,268,14,11,291,139,697,22
+true_standing,203,725,4063,122,0,17,10,308,206,855,806,15
+true_walking,7,23,248,6962,239,4,424,976,214,70,68,5
+true_running,0,25,76,264,2754,1,10,223,311,45,66,0
+true_cycling,35,196,39,0,1,5146,23,4,22,499,400,0
+true_nordic_walking,1,86,34,529,6,217,4716,687,810,97,102,0
+true_asc_stairs,129,30,153,99,15,15,17,3497,151,201,104,14
+true_desc_stairs,27,35,152,219,32,60,77,285,2590,269,160,24
+true_vacuuming,29,80,149,22,2,376,20,155,139,5343,458,12
+true_ironing,4,206,357,10,5,811,34,23,164,556,7044,31
+true_rope_jumping,34,19,27,85,23,12,0,88,94,57,54,1142
