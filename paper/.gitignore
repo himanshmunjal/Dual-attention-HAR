@@ -1,0 +1,10 @@
+paper.aux
+paper.log
+paper.out
+paper.bbl
+paper.blg
+generated/*.log
+generated/analysis.err
+generated/pandoc_input.tex
+generated/refs.lua
+generated/meta.yaml

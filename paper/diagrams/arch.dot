@@ -1,0 +1,22 @@
+digraph G {
+  rankdir=TB; nodesep=0.25; ranksep=0.28; bgcolor="white"; pad=0.05;
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10, fillcolor="#f2f2f2", color="#333333", penwidth=0.9, margin="0.10,0.06"];
+  edge [color="#333333", arrowsize=0.6, penwidth=0.9];
+
+  x   [label=<IMU window <i>x</i><br/><font point-size="8.5"><i>T</i> time steps × <i>C</i> channels</font>>];
+  subgraph cluster_ca {
+    label=<<b>spectral-gated channel attention</b>>; fontname="Helvetica"; fontsize=9.5; fontcolor="#1f5fa8";
+    style="dashed,rounded,filled"; fillcolor="#eaf1fa"; color="#1f5fa8"; margin=8;
+    ca  [label=<learned channel attention<br/><font point-size="8.5"><i>a</i> = σ(MLP(avg<sub>t</sub> <i>x</i>) + MLP(max<sub>t</sub> <i>x</i>))</font>>, fillcolor="white"];
+    sg  [label=<spectral gate<br/><font point-size="8.5"><i>g</i> = σ(MLP(ρ, <i>H</i>)), from rFFT</font>>, fillcolor="white", color="#1f5fa8"];
+    mul [label="×", shape=circle, fillcolor="white", width=0.25, fixedsize=true, fontsize=11, margin=0];
+    ca -> mul; sg -> mul;
+  }
+  rw  [label=<reweight<br/><font point-size="8.5"><i>x̃</i> = <i>x</i> ⊙ <i>w</i>,  <i>w</i> = <i>ag</i> / mean(<i>ag</i>)</font>>];
+  gru [label=<2-layer BiGRU<br/><font point-size="8.5">64 units / direction<br/>dropout 0.3</font>>, fillcolor="#fbe9d6"];
+  ta  [label=<temporal attention<br/><font point-size="8.5">additive (Bahdanau) scores,<br/>softmax over time steps,<br/>context = weighted sum of states</font>>, fillcolor="#eaf1fa", color="#1f5fa8"];
+  head [label=<FC 128, ReLU,<br/>dropout, FC<br/>→ softmax (<i>K</i>)>];
+
+  x -> ca; x -> sg; mul -> rw; x -> rw [style=dashed, color="#777777", constraint=false];
+  rw -> gru -> ta -> head;
+}

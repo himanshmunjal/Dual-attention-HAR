@@ -1,0 +1,12 @@
+digraph G {
+  rankdir=TB; nodesep=0.25; ranksep=0.3; pad=0.05;
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10, fillcolor="white", color="#333333", penwidth=0.9, margin="0.10,0.06"];
+  edge [color="#333333", arrowsize=0.6, penwidth=0.9];
+  xc  [label=<channel signal<br/><i>x</i><sub>1:<i>T</i>, <i>c</i></sub>>, fillcolor="#f2f2f2"];
+  ps  [label=<power spectrum<br/><font point-size="8.5"><i>P<sub>f</sub></i> = |rFFT(<i>x</i><sub>:,<i>c</i></sub>)|<sup>2</sup>,  <i>f</i> = 1…<i>F</i></font>>];
+  rho [label=<low-band energy ratio<br/><font point-size="8.5">ρ<sub><i>c</i></sub> = Σ<sub><i>f</i> ∈ [0.3, 3.5] Hz</sub> <i>P<sub>f</sub></i> / Σ<sub><i>f</i></sub> <i>P<sub>f</sub></i></font>>];
+  ent [label=<normalised spectral entropy<br/><font point-size="8.5"><i>H<sub>c</sub></i> = −Σ<sub><i>f</i></sub> <i>p<sub>f</sub></i> log <i>p<sub>f</sub></i> / log <i>F</i></font>>];
+  mlp [label=<shared MLP<br/><font point-size="8.5">2 → 8 → 1, tanh<br/>33 parameters</font>>, fillcolor="#eaf1fa", color="#1f5fa8"];
+  g   [label=<gate<br/><i>g<sub>c</sub></i> = σ(·) ∈ (0,1)>];
+  xc -> ps; ps -> rho; ps -> ent; rho -> mlp; ent -> mlp; mlp -> g;
+}
