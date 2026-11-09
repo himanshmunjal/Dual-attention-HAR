@@ -727,11 +727,17 @@ NUM["perclass_delta"] = {d: {SHORT[a]: {CLASS_NAMES[d][l]: round(float(v), 3) fo
                              for a in ["cnn_bigru_reference:-", "deepconvlstm:-", PROPOSED, "dual_attention_bigru:plain"]} for d in DATASETS}
 
 # ---------------------------------------------------------------------------
-# what does the spectral gate see? descriptors on the raw windows
-# (UCI-HAR and WISDM only: PAMAP2 is not preprocessed on this machine)
+# what does the spectral gate see? descriptors on the preprocessed windows
 # ---------------------------------------------------------------------------
-SR = {"ucihar": 50, "wisdm": 20}
+SR = {"ucihar": 50, "wisdm": 20, "pamap2": 50}
 CHN = {"ucihar": ["acc x", "acc y", "acc z", "gyro x", "gyro y", "gyro z"], "wisdm": ["acc x", "acc y", "acc z"]}
+
+
+def channel_names(d):
+    if d in CHN:
+        return CHN[d]
+    meta = json.loads((ROOT / "data" / "processed" / d / "meta.json").read_text())
+    return [str(c).replace("_", " ") for c in meta["channels"]]
 
 
 def descriptors(X, sr, band=(0.3, 3.5)):
@@ -749,8 +755,10 @@ desc_stats = {}
 
 
 def fig_descriptors():
-    fig, axes = plt.subplots(1, 2, figsize=(6.8, 2.6), gridspec_kw=dict(width_ratios=[6, 3]))
-    for ax, d in zip(axes, ["ucihar", "wisdm"]):
+    fig = plt.figure(figsize=(6.8, 7.6))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1, 2.6], hspace=0.5, wspace=0.3)
+    axes = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1]), fig.add_subplot(gs[1, :])]
+    for ax, d in zip(axes, DATASETS):
         X = np.load(ROOT / "data" / "processed" / d / "X.npy").astype(np.float32)
         y = np.load(ROOT / "data" / "processed" / d / "y.npy")
         # the model sees per-channel z-scored inputs (training-fold statistics);
@@ -761,7 +769,7 @@ def fig_descriptors():
         M = np.stack([ratio[y == l].mean(0) for l in labs])  # (classes, channels)
         im = ax.imshow(M.T, cmap="viridis", vmin=0, vmax=1, aspect="auto")
         ax.set_xticks(range(len(labs)), [CLASS_NAMES[d][l] for l in labs], rotation=45, ha="right")
-        ax.set_yticks(range(len(CHN[d])), CHN[d])
+        ax.set_yticks(range(M.shape[1]), channel_names(d), fontsize=6 if M.shape[1] > 6 else None)
         ax.set_title(DNAME[d])
         for i in range(M.shape[1]):
             for j in range(M.shape[0]):

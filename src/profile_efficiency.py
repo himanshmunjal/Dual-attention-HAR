@@ -6,8 +6,9 @@ ablation arm on every dataset, measured in ONE controlled pass on ONE
 machine -- separately from training, because training runs happen on
 whatever hardware is free and their timings are not comparable.
 
-Latency is the median over `--repeats` forward passes (after warm-up) at
-batch size 1 and 32. CPU latency uses a fixed thread count (default 1, a
+Latency at batch size 1 and 32 is timed in `--rounds` interleaved rounds of
+`--repeats` forward passes each (after `--warmup` passes per round); the CSV
+holds the median and the 25th/75th percentiles over all timed passes. CPU latency uses a fixed thread count (default 1, a
 reasonable proxy for an edge/wearable-class CPU and much more stable than
 "all cores"). Report the device names written into the CSV in the paper.
 
@@ -57,8 +58,9 @@ def main():
                    help="default: cpu, plus cuda if available (mps only if listed)")
     p.add_argument("--cpu_threads", type=int, default=1)
     p.add_argument("--batch_sizes", type=int, nargs="+", default=[1, 32])
-    p.add_argument("--warmup", type=int, default=20)
-    p.add_argument("--repeats", type=int, default=100)
+    p.add_argument("--warmup", type=int, default=50)
+    p.add_argument("--repeats", type=int, default=200)
+    p.add_argument("--rounds", type=int, default=5)
     p.add_argument("--out", default=str(EFFICIENCY_CSV))
     args = p.parse_args()
 
@@ -83,7 +85,8 @@ def main():
                 for dev in devices:
                     device = torch.device(dev)
                     lat = measure_latency(model, input_shape, device, batch_sizes=args.batch_sizes,
-                                          n_warmup=args.warmup, n_repeats=args.repeats)
+                                          n_warmup=args.warmup, n_repeats=args.repeats,
+                                          n_rounds=args.rounds)
                     row = dict(model=model_name, variant=variant, dataset=ds, device=dev,
                                device_name=device_name(device),
                                cpu_threads=args.cpu_threads if dev == "cpu" else None,
@@ -96,7 +99,8 @@ def main():
                     rows.append(row)
                     print(f"{ds:7s} {model_name:26s} {variant:14s} {dev:4s} params={params:>7} "
                           f"flops={(flops or 0)/1e6:7.2f}M " +
-                          " ".join(f"{k.replace('latency_ms_', '')}={v:.3f}ms" for k, v in lat.items()))
+                          " ".join(f"{b}={lat[f'latency_ms_bs{b}']:.3f}ms [{lat[f'latency_ms_bs{b}_p25']:.3f}, "
+                                   f"{lat[f'latency_ms_bs{b}_p75']:.3f}]" for b in args.batch_sizes))
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

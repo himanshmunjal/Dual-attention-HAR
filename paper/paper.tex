@@ -20,8 +20,8 @@
 \title{Does Attention Help Recurrent Models for Wearable Human Activity Recognition?\\[2pt]
 \large A Subject-Independent Ablation with a Pre-Specified Decision Rule on Three Benchmarks}
 \author{Himansh Munjal\\
-\small [Department, Institution, City, Country]\\
-\small \texttt{[corresponding-author e-mail]}}
+\small School of Computer Science and Engineering (SCOPE), Vellore Institute of Technology, Vellore, India\\
+\small \texttt{[VIT e-mail]}}
 \date{}
 
 \begin{document}
@@ -177,7 +177,7 @@ All models are trained with Adam \cite{kingma2015adam} (learning rate $10^{-3}$,
 The primary metric is macro-F1, the unweighted mean of per-class F1, which is robust to class imbalance; we also report accuracy. Following scikit-learn's default, macro-F1 is averaged over every class that occurs in the labels or predictions of a fold, so false positives of a class absent from a test subject count as an F1 of zero. This lowers absolute PAMAP2 scores, where not every subject performed every activity, but affects all models equally.
 
 \paragraph{Pre-specified decision rule.}
-The rule below was written into the project's protocol document and committed to the repository on 2026-10-16, before any run of the final protocol existed. \emph{Primary endpoint:} LOSO macro-F1, one value per fold (mean over seeds), pooled over the three data sets (30 folds); two-sided Wilcoxon signed-rank test \cite{wilcoxon1945individual}, Holm-corrected \cite{holm1979simple} over the seven comparisons of SG-DA-BiGRU against every other model. The paper would be framed as a method contribution only if (i) SG-DA-BiGRU beat DA-BiGRU on this endpoint with $p_\text{Holm}<0.05$, and (ii) SG-DA-BiGRU was not significantly worse than any baseline. Otherwise it would be an empirical study. Per-data-set tests and the fixed splits are secondary. The smallest attainable two-sided Wilcoxon $p$ is 0.002 with 10 folds, $5\times10^{-4}$ with 12, 0.008 with 8 (0.055 after Holm, so PAMAP2 alone cannot reach significance) and $<10^{-8}$ with 30.
+The rule below was written into the project's protocol document and committed to the repository on 2026-10-16 (commit \texttt{9ce8188}), before any run of the final protocol existed. \emph{Primary endpoint:} LOSO macro-F1, one value per fold (mean over seeds), pooled over the three data sets (30 folds); two-sided Wilcoxon signed-rank test \cite{wilcoxon1945individual}, Holm-corrected \cite{holm1979simple} over the seven comparisons of SG-DA-BiGRU against every other model. The paper would be framed as a method contribution only if (i) SG-DA-BiGRU beat DA-BiGRU on this endpoint with $p_\text{Holm}<0.05$, and (ii) SG-DA-BiGRU was not significantly worse than any baseline. Otherwise it would be an empirical study. Per-data-set tests and the fixed splits are secondary. The smallest attainable two-sided Wilcoxon $p$ is 0.002 with 10 folds, $5\times10^{-4}$ with 12, 0.008 with 8 (0.055 after Holm, so PAMAP2 alone cannot reach significance) and $<10^{-8}$ with 30.
 
 \paragraph{Supporting analyses.}
 We report 95\% bootstrap confidence intervals of the mean fold difference (10{,}000 resamples), the Friedman test \cite{friedman1937use} with the Iman--Davenport correction and Nemenyi critical-difference diagram over all eight models \cite{demsar2006statistical}, and the Bayesian signed-rank test \cite{benavoli2017time} with a region of practical equivalence (ROPE) of $\pm0.01$ macro-F1 and a prior strength of $0.5$. These analyses were added after the decision rule was fixed and are descriptive.
@@ -382,7 +382,7 @@ Temporal-only & 0.884 $\pm$ 0.003 & 0.805 $\pm$ 0.035 & 0.702 $\pm$ 0.021 \\
 \end{figure}
 
 \subsection{Computational cost}
-Table~\ref{tab:eff} and Figure~\ref{fig:eff} relate accuracy to cost. The attention variants add at most 8.4k parameters to the BiGRU (127.8k vs.\ 119.4k on UCI-HAR), and the spectral gate itself adds 33. CNN+BiGRU has about twice as many parameters (259k), but because its pooling layers shorten the sequence fed to the BiGRU, it needs the fewest FLOPs (18.7M per UCI-HAR window, against 28.8M for SG-DA-BiGRU). DeepConvLSTM is the most expensive model by a wide margin (175M FLOPs on UCI-HAR, 435M on PAMAP2). The FLOP count misses the FFT, but measured GPU latency does not. At batch size 32 the two spectral-gated arms take 4.2\,ms on UCI-HAR, against 1.6\,ms for DA-BiGRU, 1.3\,ms for Temporal-only, 1.1\,ms for the plain BiGRU and 2.7\,ms for CNN+BiGRU. On this hardware, the 33-parameter gate therefore makes inference about 2.6 times slower than the same model without it (4.2 vs.\ 1.6\,ms) and buys no accuracy. CPU latencies favour the LSTM models because of PyTorch's optimised LSTM path on CPU, so they reflect library support rather than architectural cost.
+Table~\ref{tab:eff} and Figure~\ref{fig:eff} relate accuracy to cost. The attention variants add at most 8.4k parameters to the BiGRU (127.8k vs.\ 119.4k on UCI-HAR), and the spectral gate itself adds 33. CNN+BiGRU has about twice as many parameters (259k), but because its pooling layers shorten the sequence fed to the BiGRU, it needs the fewest FLOPs (18.7M per UCI-HAR window, against 28.8M for SG-DA-BiGRU). DeepConvLSTM is the most expensive model by a wide margin (175M FLOPs on UCI-HAR, 435M on PAMAP2). The FLOP count misses the FFT, but measured GPU latency does not. At batch size 32 the two spectral-gated arms take 4.2\,ms on UCI-HAR, against 1.6\,ms for DA-BiGRU, 1.3\,ms for Temporal-only, 1.1\,ms for the plain BiGRU and 2.7\,ms for CNN+BiGRU. On this hardware and at batch size 32, the 33-parameter gate therefore makes inference about 2.6 times slower than the same model without it (4.2 vs.\ 1.6\,ms) and buys no accuracy; at batch size 1 the slowdown is about 1.4 times (4.3 vs.\ 3.1\,ms). CPU latencies favour the LSTM models because of PyTorch's optimised LSTM path on CPU, so they reflect library support rather than architectural cost.
 
 \begin{table}[!htbp]
 \centering
@@ -420,12 +420,12 @@ Temporal-only & 127.8 & 126.6 & 133.1 & 28.8 & 11.4 & 29.9 & 1.62 & 1.27 & 17.50
 \label{sec:discussion}
 
 \paragraph{Why the spectral gate does not help.}
-The gate's descriptors do carry activity information. A logistic regression on the $2C$ descriptors alone, with subject-grouped five-fold cross-validation, reaches macro-F1 0.71 on UCI-HAR and 0.51 on WISDM. Figure~\ref{fig:desc} shows what that information is. On accelerometer channels the low-band ratio is near zero for static postures (sitting, standing, lying) and 0.2--0.5 for locomotion. In other words, the descriptors mainly separate static from dynamic activities, which every model already does almost perfectly (Figure~\ref{fig:perclass}). Gyroscope channels have high ratios for every activity and so provide little contrast. The errors that remain are among similar activities, e.g.\ upstairs versus downstairs, sitting versus standing, or household tasks in PAMAP2. These differ in fine temporal structure that a per-channel scalar gain cannot express. In addition, a two-layer BiGRU with z-scored inputs can learn to emphasise or ignore channels through its input weights, so the attention block mostly re-learns something the recurrent layer already provides.
+The gate's descriptors do carry activity information. A logistic regression on the $2C$ descriptors alone, with subject-grouped five-fold cross-validation, reaches macro-F1 0.71 on UCI-HAR, 0.51 on WISDM and 0.75 on PAMAP2. Figure~\ref{fig:desc} shows what that information is. On accelerometer channels the low-band ratio is near zero for static postures (sitting, standing, lying) and 0.2--0.5 for locomotion. In other words, the descriptors mainly separate static from dynamic activities, which every model already does almost perfectly (Figure~\ref{fig:perclass}). Gyroscope channels have high ratios for most activities and so add little contrast beyond this static/dynamic split (on PAMAP2 they are lower only for lying and sitting). The errors that remain are among similar activities, e.g.\ upstairs versus downstairs, sitting versus standing, or household tasks in PAMAP2. These differ in fine temporal structure that a per-channel scalar gain cannot express. In addition, a two-layer BiGRU with z-scored inputs can learn to emphasise or ignore channels through its input weights, so the attention block mostly re-learns something the recurrent layer already provides.
 
 \begin{figure}[!htbp]
   \centering
   \includegraphics[width=0.9\linewidth]{fig_descriptors}
-  \caption{Mean low-band (0.3--3.5\,Hz) energy ratio $\rho_c$ per channel and activity, computed on z-scored windows. On accelerometer axes the descriptor mainly separates static from dynamic activities. PAMAP2 is omitted because its preprocessed windows were not available on the analysis machine.}
+  \caption{Mean low-band (0.3--3.5\,Hz) energy ratio $\rho_c$ per channel and activity, computed on z-scored windows. On accelerometer axes the descriptor mainly separates static from dynamic activities.}
   \label{fig:desc}
 \end{figure}
 
@@ -443,7 +443,7 @@ From this study we suggest the following for papers proposing HAR architectures:
   \item Compare a new component against the identical model without it, i.e.\ an ablation, not only against weaker or differently tuned baselines.
   \item Report equivalence-aware statistics (Bayesian signed-rank or confidence intervals with a stated practical-equivalence margin) so that null results are informative.
   \item Fix the decision rule before running the final experiment, and report the outcome either way.
-  \item Report measured latency alongside FLOPs: here a component with 33 parameters and negligible FLOPs made GPU inference 2.6 times slower.
+  \item Report measured latency alongside FLOPs: here a component with 33 parameters and negligible FLOPs made GPU inference 2.6 times slower at batch size 32.
 \end{enumerate}
 
 \section{Limitations and Threats to Validity}
@@ -460,16 +460,13 @@ From this study we suggest the following for papers proposing HAR architectures:
 We set out to propose a spectral-gated dual-attention BiGRU for wearable HAR and evaluated it, together with its ablations and four baselines, under a subject-independent protocol with five seeds per fold, 1{,}320 runs and a decision rule fixed in advance. The spectral gate is practically equivalent to the same model without it ($\Delta=+0.0008$ macro-F1, 99.5\% posterior probability of $|\Delta|<0.01$), and no attention variant improves on a plain BiGRU. Convolutional-recurrent hybrids rank highest, though not significantly after correction. Differences among architectures are dwarfed by differences among held-out subjects, and fixed-split rankings are poor guides to subject-independent ones. For practitioners, a plain BiGRU or a CNN+BiGRU is the better choice on these benchmarks. For researchers, we hope that the protocol, the decision rule and the released per-run results make it easier to test, and if necessary refute, future architectural claims.
 
 \section*{Data and Code Availability}
-The three benchmarks are publicly available from their original sources \cite{anguita2013public,kwapisz2011activity,reiss2012introducing}. Code, configurations, the protocol document containing the pre-specified decision rule, all 1{,}320 per-run results, test-set predictions and the scripts that generate every table and figure in this paper are available at [repository URL].
+The three benchmarks are publicly available from their original sources \cite{anguita2013public,kwapisz2011activity,reiss2012introducing}. Code, configurations, the protocol document containing the pre-specified decision rule, all 1{,}320 per-run results, test-set predictions and the scripts that generate every table and figure in this paper are available at \url{https://github.com/himanshmunjal/Dual-attention-HAR}.
 
 \section*{Declaration of Competing Interest}
 The author declares no competing interests.
 
-\section*{Acknowledgements}
-[To be completed by the author.]
-
 \section*{Declaration on the Use of Generative AI}
-[To be completed by the author according to the target venue's policy.]
+The author used a generative AI assistant (Anthropic's Claude, through Claude Code) to help write and debug the experiment, analysis and plotting code, including the scripts that produce the tables and figures, and to help search for and summarise related literature. The author reviewed the code, checked all reported results against the per-run outputs in the repository, checked every cited reference against its original source, and takes full responsibility for the content of this paper.
 
 \bibliographystyle{unsrtnat}
 \bibliography{refs}

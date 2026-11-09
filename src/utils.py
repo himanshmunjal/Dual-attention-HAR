@@ -195,28 +195,43 @@ def _sync(device: torch.device):
 
 
 def measure_latency(model: torch.nn.Module, input_shape: tuple, device: torch.device,
-                     batch_sizes=(1, 32), n_warmup: int = 20, n_repeats: int = 100) -> dict:
+                     batch_sizes=(1, 32), n_warmup: int = 50, n_repeats: int = 200,
+                     n_rounds: int = 5) -> dict:
     """
-    Median inference latency (ms per batch) per batch size, on the given
-    device. Median rather than mean so one OS hiccup doesn't skew a row.
-    Weights don't affect latency, so run once per architecture -- in
-    profile_efficiency.py, on one fixed machine -- not per training run.
+    Inference latency (ms per batch) per batch size on the given device.
+
+    Timing is split into `n_rounds` rounds; in each round every batch size is
+    warmed up (`n_warmup` passes) and then timed (`n_repeats` passes), and the
+    order of batch sizes alternates between rounds. This keeps GPU clock
+    ramp-up, cuDNN shape caching and background load from biasing whichever
+    batch size happens to be measured first. All timed passes are pooled:
+    `latency_ms_bs{B}` is the median, `_p25`/`_p75` the quartiles and `_n`
+    the number of timed passes. Weights don't affect latency, so run once per
+    architecture -- in profile_efficiency.py, on one fixed machine.
     """
     model = model.to(device).eval()
-    results = {}
+    times = {bs: [] for bs in batch_sizes}
+    inputs = {bs: torch.randn(bs, *input_shape).to(device) for bs in batch_sizes}
     with torch.no_grad():
-        for bs in batch_sizes:
-            dummy = torch.randn(bs, *input_shape).to(device)
-            for _ in range(n_warmup):
-                model(dummy)
-            _sync(device)
-            times = []
-            for _ in range(n_repeats):
-                t0 = time.perf_counter()
-                model(dummy)
+        for r in range(n_rounds):
+            order = list(batch_sizes) if r % 2 == 0 else list(reversed(batch_sizes))
+            for bs in order:
+                x = inputs[bs]
+                for _ in range(n_warmup):
+                    model(x)
                 _sync(device)
-                times.append(time.perf_counter() - t0)
-            results[f"latency_ms_bs{bs}"] = float(np.median(times) * 1000)
+                for _ in range(n_repeats):
+                    t0 = time.perf_counter()
+                    model(x)
+                    _sync(device)
+                    times[bs].append(time.perf_counter() - t0)
+    results = {}
+    for bs, t in times.items():
+        t = np.asarray(t) * 1000
+        results[f"latency_ms_bs{bs}"] = float(np.median(t))
+        results[f"latency_ms_bs{bs}_p25"] = float(np.percentile(t, 25))
+        results[f"latency_ms_bs{bs}_p75"] = float(np.percentile(t, 75))
+        results[f"latency_ms_bs{bs}_n"] = int(t.size)
     return results
 
 

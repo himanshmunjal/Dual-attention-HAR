@@ -1137,6 +1137,10 @@
   "wisdm": {
    "f1_descriptor_only": 0.51,
    "n_features": 6
+  },
+  "pamap2": {
+   "f1_descriptor_only": 0.747,
+   "n_features": 36
   }
  },
  "datasets": {

@@ -11,6 +11,7 @@ venv/
 # src/preprocessing.py rather than committing binary data to git)
 data/raw/*/
 data/processed/*/
+data/raw/*.zip
 !data/raw/*/.gitkeep
 !data/processed/*/.gitkeep
 
